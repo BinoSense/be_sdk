@@ -1,7 +1,7 @@
 #ifndef EVO_TINYCGL_GLOBAL_DEFINE
 #define EVO_TINYCGL_GLOBAL_DEFINE
 
-#include "evo_tinycgl_config.h"
+#include "evo_tinycgl_base_config.h"
 
 /* program language defination */
 #if defined(__cplusplus)

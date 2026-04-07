@@ -196,6 +196,13 @@ typedef struct
     int64_t   isMovingFastly;                           /**< whether eyes move fastly when grab this data */
 } BE_GeneralData;
 
+typedef  struct 
+{
+    uint8_t      deviceType;               /**< deviceType, @see BE_Device_Type */
+    char         deviceName[31];	        /**< bionic eye device name */
+    unsigned int ipAddrInt;         /**< ip addr in uint (like 0x01010101) */
+    char         ipAddrStr[20];		        /**< ip addr in string (like "1.1.1.1") */
+} BE_IpInfo;
 
 #endif
 

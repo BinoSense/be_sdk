@@ -1,66 +1,56 @@
-## 依赖库
+## 目录结构
 
-在使用SDK前需要先手动安装或准备
+be_sdk_mini/
 
-### SDK本体依赖
+├── cmake/			cmake规则
 
-- CUDA 
+├── dependencies/	示例代码的依赖库
 
-	- PC
-	
-		- 使用CUDA 12， https://developer.nvidia.com/cuda-toolkit-archive
+├── include/		头文件
 
-	- Jetson
-	
-		- 和Jetpack版本相关，目前使用CUDA 11
+│   ├── platform/	不同平台的头文件
 
-- TensorRT
+├── lib/			库文件
 
-	- PC
-		
-		- 使用TensorRT 10， https://developer.nvidia.com/tensorrt/download
+│   ├── linux/		Ubuntu PC库（包括be_sdk库文件）
 
-		- 直接用，或作为ONNXRuntime的后端使用
-		
-	- Jetson
-	
-		- 和Jetpack版本相关，TensorRT 8
-	
-	- 直接用的时候，需要自己先通过手动执行`trtexec`生成.engine文件（注意.engine平台是绑定硬件的，需要在实际使用的平台上生成）
+│   ├── tegra/		Jetson库（包括be_sdk库文件）
 
-- ONNXRuntime（可选）
+│   └── win/		Win PC库（包括be_sdk库文件）
 
-	- PC
-	
-		- 目前使用1.23.2，注意下载文件名带gpu的版本， https://github.com/microsoft/onnxruntime/releases/tag/v1.23.2
-		
-		- 依赖CUDNN 9， https://developer.nvidia.com/cudnn-downloads
+├── samples/		示例代码
 
-	- Jetson
-	
-		- 目前不支持
-	
-	- 使用TensorRT作为首选后端。没有TensorRT会使用CUDA作为后端，速度会慢一些
+├── CMakeLists.txt
+
+└── README.md
 
 
-### Sample依赖（SDK本身不依赖）
+## Sample依赖库（SDK本身不依赖）
+
+在使用前需要先手动安装或准备
 
 - OpenCV（各Sample用）
 
+	- Ubuntu下可apt安装`libopencv-dev`，或使用自己编译的版本
+	
+	- Win下可以用下载的binary，或使用自己编译的版本
+
 - GLUT（OpenGL Sample用）
 
-	- Ubuntu下安装`libxmu-dev`、`libxi-dev`、`freeglut3-dev`、`libglew-dev`
+	- Ubuntu下apt安装`libxmu-dev`、`libxi-dev`、`freeglut3-dev`
 	
-	- Win下使用dependencies里提供的freeglut
+	- Win下使用dependencies目录里提供的freeglut
 
 - PCL（PCL Sample用）
 
+	- Ubuntu下安装`libpcl-dev`，或使用自己编译的版本
+	
+		**注意2204使用apt安装的PCL可能有兼容性问题**
+	
+	- Win下去PCL的Release页面下载 https://github.com/PointCloudLibrary/pcl/releases
+
 
 ## SDK文件介绍
-
-主要模块（核心部分）的处理逻辑为**获取原始数据->计算双目位姿->深度计算**
-
-同时也提供一些辅助模块，用于方便的实现如OpenGL的点云绘制等
 
 ### 主要模块
 
@@ -70,94 +60,75 @@
 
 	- `bionic_eyes_cpp_wrapper.h`
 
-2. 双目位姿计算模块
-
-	编码器值->双目位姿。下列模块选一个用即可
-
-	- `evo_beinferposestereo_onnx.h`
-	
-		使用ONNX进行位姿推理
-	
-	- `evo_beinferposestereo_trt.h`
-	
-		使用TensorRT进行位姿推理
-
-3. 深度计算模块
-
-	原始图片+内参+位姿->深度信息。下列模块选一个用即可
-
-	- `evo_bevirtualrectifypipeline_hitnet_onnx.h`
-	
-		使用Hitnet ONNX进行位姿推理
-	
-	- `evo_bevirtualrectifypipeline_hitnet_trt.h`
-	
-		使用Hitnet TensorRT进行位姿推理
-		
-	- `evo_bevirtualrectifypipeline_foundationstereo_onnx.h`
-	
-		使用FoundationStereo ONNX进行位姿推理
-	
-	- `evo_bevirtualrectifypipeline_foundationstereo_trt.h`
-	
-		使用FoundationStereo TensorRT进行位姿推理
-	
-	- `evo_bevirtualrectifypipeline_ess_trt.h`
-	
-		使用ESS TensorRT进行位姿推理（仅Jetson平台）
-
 ### 辅助模块
 
 1. OpenGL辅助模块（图片及点云的绘制、鼠标控制虚拟镜头等）
 
 	- `evo_openglutils.h`
 	
-2. OpenGL辅助模块CUDA版本（图片及点云的绘制等）
-
-	- `evo_openglutils_cuda.h`
-	
 ### Sample程序
 
-1. OpenCV例子
+不带参数运行，就会打印参数的含义和使用方法
 
-	`evo_be_Sample_WithOpenCV.cpp`
+默认可以在仿生眼设备本地实时进行深度计算，通讯直接获取到。**仿生眼设备本地计算的深度由于本地算力和传输大小限制，会进行缩图**
+
+1. OpenCV最简例子
+
+	`evo_be_Sample_WithOpenCV_simple.cpp`
 	
-	仅结合OpenCV，展示如何使用OpenCV来显示图片、距离彩图等
+	仅结合OpenCV，最简单的例子，展示如何使用OpenCV来显示图片、打印编码器值等
 	
-	其中主要展示了如何完成一个最简单的完整的**获取原始数据->计算双目位姿->深度计算**的全过程（包括使用`mat_converter.hpp`辅助头文件，将数据转为OpenCV的Mat）
+	其中主要展示了如何完成一个最简单的完整的仅获取数据的过程（包括使用`mat_converter.hpp`辅助头文件，将数据转为OpenCV的Mat）
 	
-2. OpenGL例子
+2. OpenGL显示收到的点云数据例子
 
 	`evo_be_Sample_WithOpenGL.cpp`
 	
-	结合OpenCV/OpenGL，展示如何使用OpenGL来显示点云，同时使用OpenCV来显示图片、距离彩图等
+	结合OpenGL/OpenCV，展示如何使用OpenCV来显示图片，同时使用OpenGL来显示点云等。
 	
-	其中主要展示了如何使用OpenGL绘制有序点云（使用到了辅助模块`evo_openglutils`和`evo_openglutils_cuda`来实现OpenGL部分显示及操作功能）
-
-3. PCL例子
+	其中距离数据使用的是在仿生眼设备本地计算得到的结果，将通信得到的z距离数据还原为xyz距离后显示（使用到了辅助模块`evo_openglutils`来实现OpenGL部分显示及操作功能）
+	
+3. PCL显示收到的点云数据例子
 
 	`evo_be_Sample_WithPCL.cpp`
 	
-	结合OpenCV/PCL，展示如何使用PCL来显示点云，同时使用OpenCV来显示图片、距离彩图等
+	结合OpenCV/PCL，展示如何使用OpenCV来显示图片，同时使用PCL来显示点云等
 	
-	其中主要展示了如何将结果转为PCL需要的无序点云并使用PCL绘制
+	其中距离数据使用的是在仿生眼设备本地计算得到的结果，将通信得到的z距离数据还原为xyz距离，再转为无序点云后显示
 	
 	
 ### CMake配置
 
-1. 如果要使用ONNXRuntime，修改`ONNXRuntime_ROOT_DIR`指定到ONNXRuntime的根目录即可
+- 修改`OpenCV_DIR`指定到`OpenCVConfig.cmake`所在的目录，通常是OpenCV的`/lib/cmake/opencv4`
 
-2. 修改`TensorRT_DIR`指定到TensorRT的根目录
-
-3. 修改`OpenCV_DIR`指定到`OpenCVConfig.cmake`所在的目录，通常是OpenCV的`\lib\cmake\opencv4`
+- GLUT和PCL会自动去找，找不到的话自己手动修改
 
 
 ## 注意点
 
-1. 如果使用ONNXRuntime，第一次运行时，会自动先去生成.engine文件，所以会比较慢
+1. 临时目录问题
 
-2. 使用ONNXRuntime目前在ubuntu需要配套使用SDK编译时的版本，否则会找不到符号
-	
-	具体依赖的版本号，可以在sample程序运行时报错信息看到
+- Ubuntu的话，在运行之前，需要确保有`/usr/Evo_BionicEyes`目录，然后确保有可读写的权限，然后还要有`/usr/Evo_BionicEyes/tmp_path`目录
 
-3. 由于部分模块命名比较相似（比如仅使用后缀_onnx和_trt来区分使用的推理引擎），加载头文件和link的库注意要对应
+```
+sudo mkdir /usr/Evo_BionicEyes
+sudo chmod 777 /usr/Evo_BionicEyes/
+mkdir /usr/Evo_BionicEyes/tmp_path
+```
+
+- Win的话，在运行之前，需要确保有`C:/Evo_BionicEyes`目录，然后还要有`C:/Evo_BionicEyes/tmp_path`目录
+
+2. OpenGL的sample不使用NV独立显卡而使用集成显卡导致无法正常运行的问题
+
+- Ubuntu的话，在console先执行
+
+```
+export __NV_PRIME_RENDER_OFFLOAD=1
+export __GLX_VENDOR_LIBRARY_NAME=nvidia
+```
+
+然后再运行程序
+
+- Win的话，设置->系统->屏幕->显示卡->应用程序的自定义设置
+
+然后添加应用，将程序加进去，GPU首选项选成NV独立显卡

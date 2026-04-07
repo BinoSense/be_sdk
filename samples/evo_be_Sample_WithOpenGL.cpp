@@ -6,20 +6,14 @@
 #include <string>
 #include <fstream>
 #include <vector>
-#include <chrono>
+#include <cmath>
+#include <limits>
+#include <algorithm>
 
 #include <opencv2/opencv.hpp>
 
 #include "bionic_eyes_cpp_wrapper.h"
-#ifdef USING_ONNX
-#include "evo_beinferposestereo_onnx.h"
-#include "evo_bevirtualrectifypipeline_hitnet_onnx.h"
-#else
-#include "evo_beinferposestereo_trt.h"
-#include "evo_bevirtualrectifypipeline_hitnet_trt.h"
-#endif
 #include "evo_openglutils.h"
-#include "evo_openglutils_cuda.h"
 
 #ifndef WIN32
 #include <unistd.h>
@@ -35,18 +29,12 @@
 #define msleep(ms) Sleep(ms)
 #endif
 
-#ifdef USING_ONNX
-evo::depth::BEVirtualRectifyPipeline_Hitnet_Onnx vrht;
-evo::BEInferPoseStereo_Onnx ips;
-#else
-evo::depth::BEVirtualRectifyPipeline_Hitnet_Trt vrht;
-evo::BEInferPoseStereo_Trt ips;
-#endif
 	
 //camera control
-evo::CameraControlGL* camera_gl;
+evo::CameraControlGL* camera_gl = nullptr;
 //opengl interop
-evo::OpenGLPointCloudInteropCUDA* interop;
+evo::OpenGLPointCloudInterop* interop_cloud = nullptr;
+evo::OpenGLImageInterop* interop_image_left = nullptr;
 
 struct BE_FSMState // Finite state machine
 {
@@ -55,19 +43,18 @@ struct BE_FSMState // Finite state machine
     BE_Data_TransmissionType data_transmissionType;
     std::string server_ipAddr = "";
     bionic_eyes::BionicEyesWrapper *device = nullptr;
-    BE_GeneralData beData;
-    double scale = 1;
-    std::string hitnet_model_path = "";
-    std::string left_model_path = "";
-    std::string right_model_path = "";
-	evo::INPUT_IMAGE_FORMAT format;	
+	int precision = 1;
 	float distance_min = 200.0f;
 	float distance_max = 5000.0f;
 };
 
+bool fullscreen = true;
+bool keep_image_ratio = true;
 bool running = false;
 bool saving = false;
-bool using_sv = false;
+bool printing = false;
+bool using_sv = false;//是否使用SV计算
+bool showing_pointcloud_0 = false;//显示0位置位置初始朝向点云还是当前左眼相机朝向点云
 bool right_pitch_flag[6] = {1,0,0,0,0,0};
 bool right_roll_flag[6] = {0,1,0,0,0,0};
 bool right_yaw_flag[6] = {0,0,1,0,0,0};
@@ -82,14 +69,15 @@ bool left_button_pressed = false;
 bool right_button_pressed = false;
 int last_x, last_y;
 
-std::chrono::time_point<std::chrono::high_resolution_clock> now, last;
-float fps;
-int beDataId_last = -1;
-int w, h;//image width/height
-bionic_eyes::BE_CalibData_w calib_data;
-unsigned char *p_result_left_ori_rgba = nullptr;
-float *p_xyz = nullptr;
-
+int id;
+int w = 640, h = 480;//TODO：初始化大小不该写死
+std::vector<uint16_t> Z;//z距离
+std::vector<float> L0Ln_RT(6);//左眼0位置到新位置的RT
+std::vector<float> K0_rectified(9);//去畸变的左眼新内参
+std::vector<float> XYZ(640 * 480 * 3);//TODO：初始化大小不该写死
+std::vector<float> XYZ0(640 * 480 * 3);//TODO：初始化大小不该写死
+BE_Image bgr_l = {0};//去畸变的左眼图像
+cv::Mat cv_rgba(h, w, CV_8UC4);
 
 bool ProgramOptionExists(int argc, char **argv, const std::string &option)
 {
@@ -118,25 +106,6 @@ int cmdOptionParser(int argc, char *argv[], BE_FSMState &be_fsm)
         be_fsm.data_transmissionType = enumDataTransmission_OneByOne;
 
     std::string option;
-	
-    if (ProgramOptionExists(argc, argv, "--scale"))
-        be_fsm.scale = std::stof(GetProgramOptionAsString(argc, argv, "--scale"));
-	
-    if (ProgramOptionExists(argc, argv, "--hitnetModelPath"))
-        be_fsm.hitnet_model_path = GetProgramOptionAsString(argc, argv, "--hitnetModelPath");
-    else if (ProgramOptionExists(argc, argv, "-hit"))
-        be_fsm.hitnet_model_path = GetProgramOptionAsString(argc, argv, "-hit");
-	
-    if (ProgramOptionExists(argc, argv, "--leftModelPath"))
-        be_fsm.left_model_path = GetProgramOptionAsString(argc, argv, "--leftModelPath");
-    else if (ProgramOptionExists(argc, argv, "-l"))
-        be_fsm.left_model_path = GetProgramOptionAsString(argc, argv, "-l");
-	
-    if (ProgramOptionExists(argc, argv, "--rightModelPath"))
-        be_fsm.right_model_path = GetProgramOptionAsString(argc, argv, "--rightModelPath");
-    else if (ProgramOptionExists(argc, argv, "-r"))
-        be_fsm.right_model_path = GetProgramOptionAsString(argc, argv, "-r");
-
 
     if (ProgramOptionExists(argc, argv, "--connect"))
         option = GetProgramOptionAsString(argc, argv, "--connect");
@@ -182,20 +151,20 @@ int cmdOptionParser(int argc, char *argv[], BE_FSMState &be_fsm)
 void printHelpMessage()
 {
 	std::cout << "usage: " <<  
-		"[--connect <mode>] [--scale <value>] [--server <mode>] [--serverIP <ip>] [--hitnetModelPath <path>] [--leftModelPath <path>] [--rightModelPath <path>]\n\
+		"[--connect <mode>] [--server <mode>] [--serverIP <ip>]\n\
 		options:\n\
-		  -h --help      \tShow this help message\n\
-		  --scale		\tScale of image (NOT support local)\n\
 		  -c --connect   \tConnect mode: i (image), c (control), ic (image & control)\n\
 		  -s --server    \tServer mode: lo (LocalServer_Only), lf (LocalServer_First), do (DeviceServer_Only), df (DeviceServer_First), no (not using net)\n\
-		  -sip --serverIP  \tIP of server device: xxx.xxx.xxx.xxx\n\
-		  -hit --hitnetModelPath  \tHitnet model path\n\
-		  -l --leftModelPath  \tLeft model path\n\
-		  -r --rightModelPath  \tRight model path\n"
+		  -sip --serverIP  \tIP of server device: xxx.xxx.xxx.xxx\n"
 	<< std::endl;
+	std::cout << "using z x to control OpenGL virtual camera zoom" << std::endl;
 	std::cout << "using 1 2 3 4 5 6 7 8 9 0 - = to control motors" << std::endl;
+	std::cout << "using f to switch full screen" << std::endl;
+	std::cout << "using r to switch images keep ratio" << std::endl;
 	std::cout << "using s to save images" << std::endl;
+	std::cout << "using p to print L0Ln_RT" << std::endl;
 	std::cout << "using v to set SV on/off" << std::endl;
+	std::cout << "using c to switch painting point cloud using current position/0 position" << std::endl;
 };
 
 //mouse press event
@@ -266,13 +235,39 @@ void handleKeypress(unsigned char key, int x, int y)
     case 27://exit
         running = false;
         break;
+	case 'f':
+		if (fullscreen)
+		{
+			//Configure Window Postion
+			glutInitWindowPosition(0, 0);
+			//Configure Window Size
+			glutReshapeWindow(w, h);
+			fullscreen = false;
+		}
+		else
+		{
+			glutFullScreen();
+			fullscreen = true;
+		}
+		break;
+	case 'r':
+		keep_image_ratio = !keep_image_ratio;
+		std::cout << "keep_image_ratio " << keep_image_ratio << std::endl;
+		break;
 	case 'v':
 		using_sv = !using_sv;
 		std::cout << "using_sv " << using_sv << std::endl;
-		vrht.setSVValid(using_sv);
-		break;	
+		be_fsm.device->setDepthControl(true, using_sv, be_fsm.precision, be_fsm.distance_min, be_fsm.distance_max);
+		break;
 	case 's':
 		saving = true;
+		break;
+	case 'p':
+		printing = true;
+		break;
+	case 'c':
+		showing_pointcloud_0 = !showing_pointcloud_0;
+		std::cout << "showing_pointcloud_0 " << showing_pointcloud_0 << std::endl;
 		break;
 	case 'z':
         camera_gl->setZoomScale(camera_gl->getZoomScale() * 0.85f);
@@ -347,175 +342,218 @@ void handleKeypress(unsigned char key, int x, int y)
     }
 }
 
-
-void draw()
+//保存ply
+bool save_ply_ascii(const char* file_name, unsigned char* p_rgba, float* p_point, int number)
 {
-    evo::OpenGLUtils::clear();
-	
-    camera_gl->show();
-	
-    evo::OpenGLUtils::drawAxes_3d(1000);
-	
-
-	be_fsm.device->getBeData(be_fsm.beData);
-	if (!be_fsm.beData.isMovingFastly)
+	std::fstream fs;
+	fs.open(file_name, std::ios::out | std::ios::binary);
+	if (!fs.is_open())
 	{
-		if (be_fsm.beData.frame_id != beDataId_last)
+		std::cerr << "can not open file: " << file_name << std::endl;
+		return false;
+	}
+
+	fs << "ply" << std::endl;
+	fs << "format ascii 1.0" << std::endl;
+	fs << "comment made by evo_utils" << std::endl;
+
+	fs << "element vertex " << number << std::endl;
+	fs << "property float x" << std::endl;
+	fs << "property float y" << std::endl;
+	fs << "property float z" << std::endl;
+	fs << "property uchar red" << std::endl;
+	fs << "property uchar green" << std::endl;
+	fs << "property uchar blue" << std::endl;
+	fs << "property uchar alpha" << std::endl;
+	fs << "end_header" << std::endl;
+	fs.flush();
+
+	for (int i = 0; i < number; i++)
+	{
+		std::string temp;
+		temp += std::to_string(p_point[3 * i]) + " " + std::to_string(p_point[3 * i + 1]) + " " + std::to_string(p_point[3 * i + 2]) + " ";
+		temp += std::to_string((int)(p_rgba[4 * i])) + " " + std::to_string((int)(p_rgba[4 * i + 1])) + " " + std::to_string((int)(p_rgba[4 * i + 2])) + " " + std::to_string((int)(p_rgba[4 * i + 3])) + "\r\n";
+		fs << temp;
+	}
+	fs.flush();
+	fs.close();
+
+	return true;
+}
+
+//z距离转为完整的xyz距离
+void zToXyz(const unsigned short *z, float *xyz, int width, int height, int precision, const float k[9])
+{
+	for (int i = 0; i < height; i++)
+	{
+		for (int j = 0; j < width; j++)
 		{
-			//取左右原图，如果是sbs的则分成左右
-			cv::Mat imgL_temp, imgR_temp;
-			cv::Mat imgL_raw, imgR_raw;
-			if (be_fsm.beData.Image_data[enumBoth].width > 0)//sbs
+			int index = i * width + j;
+			int index_xyz = index * 3;
+			unsigned short zz = z[index];
+			if (zz == std::numeric_limits<unsigned short>::max())
 			{
-				cv::Mat Org = ImageConverter::toMat(&be_fsm.beData.Image_data[enumBoth], false);
-				imgL_temp = Org.colRange(0, w);
-				imgR_temp = Org.colRange(w, 2 * w);
+				xyz[index_xyz] = INFINITY;
+				xyz[index_xyz + 1] = INFINITY;
+				xyz[index_xyz + 2] = INFINITY;
 			}
 			else
 			{
-				imgL_temp = ImageConverter::toMat(&be_fsm.beData.Image_data[enumLeft], false);
-				imgR_temp = ImageConverter::toMat(&be_fsm.beData.Image_data[enumRight], false);
+				float zzz = (float)zz / precision;
+				xyz[index_xyz] = (j - k[2]) * zzz / k[0];//(x-cx)*z/fx
+				xyz[index_xyz + 1] = (i - k[5]) * zzz / k[4];//(y-cy)*z/fy
+				xyz[index_xyz + 2] = zzz;
 			}
-			imgL_raw = imgL_temp.clone();
-			imgR_raw = imgR_temp.clone();
-			
-			
-			//推理外参
-			ips.process(be_fsm.beData.motorData);
-			float* p_rt_vector = ips.retrieveLR();
-			float* p_l0_rt_vector = ips.retrieve0L();
-			std::vector<float> lr_r(p_rt_vector, p_rt_vector + 3);//左眼到右眼的旋转向量
-			std::vector<float> lr_t(p_rt_vector + 3, p_rt_vector + 6);//左眼到右眼的平移向量
-			std::vector<float> l0_r(p_l0_rt_vector, p_l0_rt_vector + 3);//左眼0位置到新位置的旋转向量
-			std::vector<float> l0_t(p_l0_rt_vector + 3, p_l0_rt_vector + 6);//左眼0位置到新位置的平移向量
-			
-						
-			//运行深度计算处理的pipeline
-			vrht.process(imgL_raw.data, imgR_raw.data, lr_r, lr_t, l0_r, l0_t);
+		}
+	}
+}
 
-			//获取转回去原角度的左图
-			unsigned char* p_result_left_ori = vrht.retrieveRectifiedOriBGR(false);//BGR用于图片显示
-			p_result_left_ori_rgba = vrht.retrieveRectifiedOriRGBA(true);//RGBA用于点云显示
-			cv::Mat left_ori = cv::Mat(h, w, CV_8UC3, p_result_left_ori);
-			//获取转回去原角度的距离z彩图
-			unsigned char* p_result_color_ori = vrht.retrieveZOriColor(false);
-			cv::Mat result_color_ori = cv::Mat(h, w, CV_8UC4, p_result_color_ori);
-			
-			//获取转到0点的点云
-			p_xyz = vrht.retrieveXYZZeroPoint(true);
-			
-			
+//将xyz转回0位置，由于rt是左眼0位置到新位置的RT，所以这里要反着来
+void xyzRotateToZeroPoint(const float *xyz, float *xyz0, int width, int height, float *rt)
+{
+	cv::Mat r_left_vec(3, 1, CV_32FC1, rt);
+	cv::Mat t_left_vec(3, 1, CV_32FC1, rt + 3);
+	cv::Mat r_left;
+	cv::Rodrigues(r_left_vec, r_left);
+	
+    // 旋转矩阵的逆等于它的转置
+    cv::Mat r_left_inv = r_left.t(); 
+    // 逆平移 = -R_inv * t_vec
+    cv::Mat t_left_vec_inv = -r_left_inv * t_left_vec;
+	
+	cv::Mat m_34 = cv::Mat::zeros(3, 4, CV_32F);
+    r_left_inv.copyTo(m_34(cv::Rect(0, 0, 3, 3)));
+    t_left_vec_inv.copyTo(m_34(cv::Rect(3, 0, 1, 3)));
+	
+	cv::Mat input(1, width * height, CV_32FC3, (void*)xyz);
+	cv::Mat output(1, width * height, CV_32FC3, (void*)xyz0);
+	
+    cv::transform(input, output, m_34);
+}
+
+void draw()
+{
+    int ww = glutGet(GLUT_WINDOW_WIDTH);
+    int hh = glutGet(GLUT_WINDOW_HEIGHT);
+	
+    evo::OpenGLUtils::clear();
+	
+
+	//获取深度信息
+	if (be_fsm.device->isBeDataReady())
+	{
+		//获取传输的深度信息
+		if (be_fsm.device->getNewestDepthInfo(id, Z, L0Ln_RT, K0_rectified, bgr_l))
+		{
+			if (bgr_l.width == 0)
+				return;
+			//转OpenCV Mat
+			cv::Mat cv_bgr = ImageConverter::toMat(&bgr_l, false);
+			//转成RGBA供OpenGL显示、ply储存
+			cv::cvtColor(cv_bgr, cv_rgba, cv::COLOR_BGR2RGBA);
+			//将得到当前左眼的深度z转为xyz
+			zToXyz(Z.data(), XYZ.data(), w, h, be_fsm.precision, K0_rectified.data());
+			//生成0位置初始方向点云
+			xyzRotateToZeroPoint(XYZ.data(), XYZ0.data(), w, h, L0Ln_RT.data());
+
 			//处理按键事件保存
 			if (saving)
 			{
-				if (be_fsm.format == evo::INPUT_IMAGE_FORMAT_BGR)
-				{
-					cv::imwrite("l.png", imgL_raw);
-					cv::imwrite("r.png", imgR_raw);					
-				}
-				else if (be_fsm.format == evo::INPUT_IMAGE_FORMAT_IYUV)
-				{
-					std::fstream ofile;
-					ofile.open("0.data", (std::ios_base::openmode)(std::ios_base::trunc | std::ios_base::out | std::ios_base::binary));
-			
-					ofile.write((char*)imgL_raw.data, imgL_raw.cols * imgL_raw.rows * imgL_raw.channels());
-					ofile.flush();
-					ofile.close();
-			
-					ofile.open("1.data", (std::ios_base::openmode)(std::ios_base::trunc | std::ios_base::out | std::ios_base::binary));
-					
-					ofile.write((char*)imgR_raw.data, imgR_raw.cols * imgR_raw.rows * imgR_raw.channels());
-					ofile.flush();
-					ofile.close();
-				}
-				cv::imwrite("l_ori.png", left_ori);
-				cv::imwrite("result_color_ori.png", result_color_ori);
-				vrht.savePLYOri("points_ori.ply", false);
-				vrht.savePLYZeroPoint("point_0.ply", false);
-				
-				//计算深度用的矫正后的左右图
-				unsigned char* p_left_rectified = vrht.retrieveRectifiedBGR(true, false);
-				unsigned char* p_right_rectified = vrht.retrieveRectifiedBGR(false, false);
-				cv::Mat left_rectified = cv::Mat(h, w, CV_8UC3, p_left_rectified);
-				cv::Mat right_rectified = cv::Mat(h, w, CV_8UC3, p_right_rectified);
-				cv::imwrite("left_rectified.png", left_rectified);
-				cv::imwrite("right_rectified.png", right_rectified);
-				
+				cv::imwrite("bgr_l.png", cv_bgr);
+				save_ply_ascii("point.ply", cv_rgba.data, XYZ.data(), w * h);
+				save_ply_ascii("point0.ply", cv_rgba.data, XYZ0.data(), w * h);
 				saving = false;
-				
-				std::cout << "K left ";
-				for (int i = 0; i < calib_data.K[1].size(); i++)
-				{
-					std::cout << calib_data.K[1][i] << ", ";
-				}
-				std::cout << std::endl;					
-				std::cout << "D left ";
-				for (int i = 0; i < calib_data.D[1].size(); i++)
-				{
-					std::cout << calib_data.D[1][i] << ", ";
-				}
-				std::cout << std::endl;
-				std::cout << "K right ";
-				for (int i = 0; i < calib_data.K[0].size(); i++)
-				{
-					std::cout << calib_data.K[0][i] << ", ";
-				}
-				std::cout << std::endl;					
-				std::cout << "D right ";
-				for (int i = 0; i < calib_data.D[0].size(); i++)
-				{
-					std::cout << calib_data.D[0][i] << ", ";
-				}
-				std::cout << std::endl;
-				std::cout << "0 R ";
-				for (int i = 0; i < calib_data.R[6].size(); i++)
-				{
-					std::cout << calib_data.R[6][i] << ", ";
-				}
-				std::cout << std::endl;					
-				std::cout << "0 T ";
-				for (int i = 0; i < calib_data.t[6].size(); i++)
-				{
-					std::cout << calib_data.t[6][i] << ", ";
-				}
-				std::cout << std::endl;
-				std::cout << "R " << p_rt_vector[0] << ", " << p_rt_vector[1] << ", " << p_rt_vector[2] << std::endl;
-				std::cout << "T " << p_rt_vector[3] << ", " << p_rt_vector[4] << ", " << p_rt_vector[5] << std::endl;
-				std::cout << "L R " << p_l0_rt_vector[0] << ", " << p_l0_rt_vector[1] << ", " << p_l0_rt_vector[2] << std::endl;
-				std::cout << "L T " << p_l0_rt_vector[3] << ", " << p_l0_rt_vector[4] << ", " << p_l0_rt_vector[5] << std::endl;
 			}
-					
+			
+			//打印L0Ln_RT
+			if (printing)
+			{
+				for (int i = 0; i < 6; i++)
+				{
+					std::cout << L0Ln_RT[i] << " ";
+				}
+				std::cout << std::endl;
+			}				
 		
-			//计算FPS
-			last = now;
-			now = std::chrono::high_resolution_clock::now();
-			std::chrono::duration<double> elapsed = now - last;
-			fps = 1.0f / elapsed.count();
-			std::ostringstream os;
-			os << fps;
-			std::string number = os.str();
-			cv::putText(result_color_ori, number, cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 2, cv::Scalar(0, 200, 200));
-			cv::imshow("result_color_ori", result_color_ori);
-			cv::imshow("left_ori", left_ori);
-
-			beDataId_last = be_fsm.beData.frame_id;
+			//显示id
+			//cv::putText(cv_bgr, std::to_string(id), cv::Point(20, 60), cv::FONT_HERSHEY_SIMPLEX, 2, cv::Scalar(0, 200, 200));
+			//cv::imshow("left 640x480", cv_bgr);
 		}
-		else
-			msleep(10);
 	}
-		
-		
+	else
+		msleep(10);
 	
-	interop->draw(p_result_left_ori_rgba, p_xyz, 1.0f);
+	//左右二分窗口，一半画图，一半画点云
+    int viewport_w = ww / 2;
+    int viewport_h = hh;
 	
-    evo::OpenGLUtils::drawFOV_3d(calib_data.K[0][0], calib_data.K[0][0], be_fsm.distance_min, be_fsm.distance_max, w, h);
+    //右边画点云
+    glViewport(viewport_w, 0, viewport_w, viewport_h);
+	
+	//控制虚拟相机
+	//每帧根据当前视口重新设置投影矩阵
+    float hfov = camera_gl->getHorizontalFOV();
+    // 使用当前视口的宽高比
+    camera_gl->setProjection(hfov, hfov * ((float)viewport_h / viewport_w), camera_gl->getZNear(), camera_gl->getZFar());
+    camera_gl->update();
+    camera_gl->show();
+	
+	//画坐标轴
+    evo::OpenGLUtils::drawAxes_3d(1000);
+		
+	//下面展示了使用点云的两种画法，最终在世界坐标系画出来的点云是一样的
+	//XYZ：左眼当前相机坐标系->世界坐标系（相机在L0Ln_RT位置）
+	//XYZ0：左眼0位置相机坐标系->世界坐标系（相机在原点）
+	if (showing_pointcloud_0)
+	{
+		//画0位置点云
+		interop_cloud->draw(cv_rgba.data, XYZ0.data());
+		
+		//画0位置左眼的FOV
+		//evo::OpenGLUtils::drawFOV_3d(K0_rectified[0], K0_rectified[4], K0_rectified[2], K0_rectified[5], be_fsm.distance_min, be_fsm.distance_max, w, h);
+	}
+	else
+	{
+		//生成新的model矩阵
+		std::vector<float> m_l0ln = evo::OpenGLUtils::buildModelMatrix(L0Ln_RT.data(), L0Ln_RT.data() + 3);//左眼0位置->左眼当前位置
+		
+		//画当前左眼相机朝向点云（相机坐标系->世界坐标系）
+		interop_cloud->draw(cv_rgba.data, XYZ.data(), m_l0ln.data());
+		
+		//画0位置左眼的FOV
+		//evo::OpenGLUtils::drawFOV_3d(K0_rectified[0], K0_rectified[4], K0_rectified[2], K0_rectified[5], be_fsm.distance_min, be_fsm.distance_max, w, h);
+		//画当前左眼的FOV
+		evo::OpenGLUtils::drawFOV_3d(K0_rectified[0], K0_rectified[4], K0_rectified[2], K0_rectified[5], be_fsm.distance_min, be_fsm.distance_max, w, h, m_l0ln.data(), 1.0f, 
+		0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f);
+	}
+	
+	
+	//切回画2D
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(-1, 1, -1, 1, -1, 1);
 
-    //swap.
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	
+	//左边画图片
+    glViewport(0, 0, viewport_w, viewport_h);
+	if (keep_image_ratio)
+	{
+		interop_image_left->draw(cv_rgba.data, viewport_w, viewport_h);
+	}
+	else
+	{
+		interop_image_left->draw(cv_rgba.data);
+	}
+
+	
+
     glutSwapBuffers();
 
     glutPostRedisplay();
 	
-    //cv::waitKey(1);
+    cv::waitKey(1);
 
     if (!running) {
         glutLeaveMainLoop();
@@ -526,17 +564,15 @@ void draw()
 
 int main(int argc, char *argv[])
 {
-    if (ProgramOptionExists(argc, argv, "--help") || ProgramOptionExists(argc, argv, "-h"))
-    {
-        printHelpMessage();
-        std::exit(EXIT_FAILURE);
-    }
+	printHelpMessage();
+	
+    if (argc == 1)
+		return 0;
 
 	int res = cmdOptionParser(argc, argv, be_fsm);
     if (res == -1)//本地
 	{
-		be_fsm.device = new bionic_eyes::BionicEyesWrapper(false);
-		be_fsm.scale = 1;//TODO: 本地目前不支持分辨率修改
+		be_fsm.device = new bionic_eyes::BionicEyesWrapper(false);//TODO: 本地目前不支持
 	}
 	else
 	{
@@ -546,13 +582,6 @@ int main(int argc, char *argv[])
 			be_fsm.device = new bionic_eyes::BionicEyesWrapper(be_fsm.connect_type, be_fsm.connect_dataServerType, be_fsm.data_transmissionType);
 		msleep(5000);
 		
-		be_fsm.device->setImageColor_Transfer(enumColor);
-		be_fsm.device->setImageColor(enumColor);
-		auto originalSize = be_fsm.device->getOriginImageResolution();
-
-		be_fsm.device->setImageResolution_Transfer(originalSize.first * be_fsm.scale, originalSize.second * be_fsm.scale);
-		be_fsm.device->setImageResolution(originalSize.first * be_fsm.scale, originalSize.second * be_fsm.scale);
-		be_fsm.device->setImageCompressionQuality(95);
 		be_fsm.device->setDataRate_Transfer(25);
 		msleep(250);
 		while (!(be_fsm.device->isBeDataReady()))
@@ -566,11 +595,8 @@ int main(int argc, char *argv[])
 			for (int k = 0; k < 5; k++)
 			{
 				be_fsm.device->triggerDataTransmission();
-				be_fsm.device->getBeData(be_fsm.beData);
 				msleep(20);
 			}
-
-		be_fsm.device->getBeData(be_fsm.beData);
     }
     
 
@@ -578,94 +604,40 @@ int main(int argc, char *argv[])
     be_fsm.device->onoff_SV(false);
     be_fsm.device->onoff_VOR(false);
 	be_fsm.device->goInitPosition(enumAllMotor);
-	be_fsm.device->getBeData(be_fsm.beData);
 	
-	if (be_fsm.beData.Image_data[enumBoth].width > 0)//sbs
-	{
-		const int channels = be_fsm.beData.Image_data[enumBoth].channels;
-		if (channels == 3)
-		{
-			w = be_fsm.beData.Image_data[enumBoth].width / 2;
-			h = be_fsm.beData.Image_data[enumBoth].height;
-			be_fsm.format = evo::INPUT_IMAGE_FORMAT_BGR;
-		}
-		else
-		{	
-			w = be_fsm.beData.Image_data[enumBoth].width / 2;
-			h = be_fsm.beData.Image_data[enumBoth].height / 1.5;//I420
-			be_fsm.format = evo::INPUT_IMAGE_FORMAT_IYUV;		
-		}
-		std::cout << "sbs, image width: " << w << ", height:" << h << ", channels:" << channels << std::endl;
-	}
-	else//left&right
-	{
-		const int channels = be_fsm.beData.Image_data[enumLeft].channels;
-		if (channels == 3)
-		{
-			w = be_fsm.beData.Image_data[enumLeft].width;
-			h = be_fsm.beData.Image_data[enumLeft].height;
-			be_fsm.format = evo::INPUT_IMAGE_FORMAT_BGR;	
-		}
-		else
-		{		
-			w = be_fsm.beData.Image_data[enumLeft].width;
-			h = be_fsm.beData.Image_data[enumLeft].height / 1.5;//I420
-			be_fsm.format = evo::INPUT_IMAGE_FORMAT_IYUV;	
-		}
-		std::cout << "left/right, image width: " << w << ", height:" << h << std::endl;
-	}
 
-	//获取内参及0位外参
-	calib_data = be_fsm.device->getCalibrationInfo();
-    //内参对应设置的scale的变化
-	for (int j = 0; j < 2; j++)
-	{
-		for (int i = 0; i < 8; i++)
-		{
-			calib_data.K[j][i] *= be_fsm.scale;
-		}
-	}
-	
-	//初始化位姿推理模块
-    ips.init(be_fsm.left_model_path, be_fsm.right_model_path, calib_data.R[6], calib_data.t[6]); 
-	
-	//初始化深度计算模块（注意0、1的左右定义，是反的）
-    vrht.init(be_fsm.hitnet_model_path, w, h, be_fsm.format);
-    vrht.setDistanceRange(be_fsm.distance_min, be_fsm.distance_max);
-    vrht.setCameraMatrix(calib_data.K[1], calib_data.D[1], calib_data.K[0], calib_data.D[0]);
-	
+	//开启深度信息传输
+	be_fsm.device->setDepthControl(true, using_sv, be_fsm.precision, be_fsm.distance_min, be_fsm.distance_max);
 	
 	
 	//init glut
     glutInit(&argc, argv);
 
-    /*Setting up  The Display  */
+    //Setting up The Display
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
     //Configure Window Postion
     glutInitWindowPosition(0, 0);
 
     //Configure Window Size
-    glutInitWindowSize(w, h);
+    glutInitWindowSize(1000, 1000);
 
     //Create Window
     glutCreateWindow(argv[0]);
-    //glutFullScreen();
+    glutFullScreen();
 
     glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_CONTINUE_EXECUTION);
 
-    //opengl init
-    interop = new evo::OpenGLPointCloudInteropCUDA();
+    //opengl interop init
+    interop_cloud = new evo::OpenGLPointCloudInterop();
+    interop_cloud->init(w, h, sizeof(unsigned char), sizeof(float), 4);
+    interop_image_left = new evo::OpenGLImageInterop();
+    interop_image_left->init(w, h, sizeof(unsigned char), 4);
 
-    interop->init(w, h, sizeof(unsigned char), sizeof(float), 4);
-
-    if (camera_gl == NULL)
-    {
-        camera_gl = new evo::CameraControlGL(0, 0, 0, 0, 0, -1);
-        camera_gl->setInitOffsetFromPositionMatrix(0, 0, 4000);
-    }
-
+	//opengl vitrual camera init
+    camera_gl = new evo::CameraControlGL(0, 0, 0, 0, 0, -1);
+    camera_gl->setInitOffsetFromPositionMatrix(0, 0, 4000);
     float hfov = camera_gl->getHorizontalFOV();
-    camera_gl->setProjection(hfov, hfov * h / w, camera_gl->getZNear(), camera_gl->getZFar());
+    camera_gl->setProjection(hfov, hfov, camera_gl->getZNear(), camera_gl->getZFar());
     camera_gl->update();
 
     glEnable(GL_DOUBLE);
@@ -680,33 +652,34 @@ int main(int argc, char *argv[])
     running = true;
     glutDisplayFunc(draw);
     glutMainLoop();
-
-
 	
 	
 
     std::cout << "uninit" << std::endl;
-    if (interop != NULL)
+    if (interop_cloud != nullptr)
     {
-        interop->uninit();
-        delete interop;
-        interop = NULL;
+        interop_cloud->uninit();
+        delete interop_cloud;
+        interop_cloud = nullptr;
     }
-
-    if (camera_gl != NULL)
+    if (interop_image_left != nullptr)
+    {
+        interop_image_left->uninit();
+        delete interop_image_left;
+        interop_image_left = nullptr;
+    }
+    if (camera_gl != nullptr)
     {
         delete camera_gl;
-        camera_gl = NULL;
-    }	
+        camera_gl = nullptr;
+    }
 	if (be_fsm.device != nullptr)
+    {
 		delete be_fsm.device;
-    BE_freeImage(&be_fsm.beData.Image_data[0]);
-    BE_freeImage(&be_fsm.beData.Image_data[1]);
-    BE_freeImage(&be_fsm.beData.Image_data[2]);
-    BE_freeImage(&be_fsm.beData.Image_data[3]);
+        be_fsm.device = nullptr;
+    }	
 	
-	
-	
+    BE_freeImage(&bgr_l);
 	
     return 0;
 }

@@ -84,6 +84,43 @@ public:
         return true;
     }
     /**
+     * @brief 将cv::Mat转换为BE_Image（浅拷贝）
+     * @param mat 输入cv::Mat
+     * @return 新分配的BE_Image，需要调用者释放
+     */
+    static bool toBEImage(const cv::Mat& mat, BE_Image* image, bool copy_data) 
+    {
+        if (mat.empty()) 
+        {
+            return false;
+        }
+        
+        image->width     = mat.cols;
+        image->height    = mat.rows;
+        image->channels  = mat.channels();
+        image->data_size = mat.total() * mat.elemSize();
+        
+        if(!copy_data)
+        {
+            if(!image->data)
+            {
+                image->data  = mat.data;
+            }
+            else {
+                std::memcpy(image->data, mat.data, image->data_size);
+            }
+        }
+        else {
+            // 分配内存并复制数据
+            if(!image->data)
+                image->data = new uint8_t[image->data_size];
+            std::memcpy(image->data, mat.data, image->data_size);
+        }
+
+        
+        return true;
+    }
+    /**
      * @brief 释放BE_Image
      * @param image 要释放的BE_Image指针
      */

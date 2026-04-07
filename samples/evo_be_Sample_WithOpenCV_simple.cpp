@@ -31,7 +31,7 @@ struct BE_FSMState // Finite state machine
     BE_Data_TransmissionType data_transmissionType;
     std::string server_ipAddr = "";
     bionic_eyes::BionicEyesWrapper *device = nullptr;
-    BE_GeneralData beData;
+    BE_GeneralData beData = {0};
     double scale = 1;
 	bool is_bgr;	
 };
@@ -137,7 +137,6 @@ void printHelpMessage()
 	std::cout << "usage: " <<  
 		"[--connect <mode>] [--scale <value>] [--server <mode>] [--serverIP <ip>] [--hitnetModelPath <path>] [--leftModelPath <path>] [--rightModelPath <path>]\n\
 		options:\n\
-		  -h --help      \tShow this help message\n\
 		  --scale		\tScale of image (NOT support local)\n\
 		  -c --connect   \tConnect mode: i (image), c (control), ic (image & control)\n\
 		  -s --server    \tServer mode: lo (LocalServer_Only), lf (LocalServer_First), do (DeviceServer_Only), df (DeviceServer_First), no (not using net)\n\
@@ -229,17 +228,16 @@ void handleKey(char key)
 
 int main(int argc, char *argv[])
 {
-    if (ProgramOptionExists(argc, argv, "--help") || ProgramOptionExists(argc, argv, "-h"))
-    {
-        printHelpMessage();
-        std::exit(EXIT_FAILURE);
-    }
+	printHelpMessage();
+	
+    if (argc == 1)
+		return 0;
 
 	int res = cmdOptionParser(argc, argv, be_fsm);
 	
     if (res == -1)//本地
 	{
-		be_fsm.device = new bionic_eyes::BionicEyesWrapper(false);
+		be_fsm.device = new bionic_eyes::BionicEyesWrapper(false);//TODO: 本地目前不支持
 		be_fsm.scale = 1;//TODO: 本地目前不支持分辨率修改
 	}
 	else
@@ -348,9 +346,9 @@ int main(int argc, char *argv[])
 				cv::Mat imgL_raw, imgR_raw;
 				if (be_fsm.beData.Image_data[enumBoth].width > 0)//sbs
 				{
-					cv::Mat Org = ImageConverter::toMat(&be_fsm.beData.Image_data[enumBoth], false);
-					imgL_temp = Org.colRange(0, w);
-					imgR_temp = Org.colRange(w, 2 * w);
+					cv::Mat org = ImageConverter::toMat(&be_fsm.beData.Image_data[enumBoth], false);
+					imgL_temp = org.colRange(0, w);
+					imgR_temp = org.colRange(w, 2 * w);
 				}
 				else
 				{
@@ -383,7 +381,8 @@ int main(int argc, char *argv[])
 				if (saving)
 				{
 					cv::imwrite("l.png", imgL_raw);
-					cv::imwrite("r.png", imgR_raw);	
+					cv::imwrite("r.png", imgR_raw);
+					
 					saving = false;
 					
 					std::cout << "K left ";
@@ -452,7 +451,10 @@ int main(int argc, char *argv[])
 
     std::cout << "uninit" << std::endl;
 	if (be_fsm.device != nullptr)
+    {
 		delete be_fsm.device;
+        be_fsm.device = nullptr;
+    }	
     BE_freeImage(&be_fsm.beData.Image_data[0]);
     BE_freeImage(&be_fsm.beData.Image_data[1]);
     BE_freeImage(&be_fsm.beData.Image_data[2]);
