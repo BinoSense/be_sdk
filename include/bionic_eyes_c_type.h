@@ -189,11 +189,11 @@ typedef struct
     uint64_t  frame_id;
     uint64_t  timestamp;
 
-    float     imuData[16][4];                           /**< IMU Data 目前使用1-6对应 IMUDataType ，每个Type对应4个数据*/
-    float     motorData[6];                             /**< Motor Coder Data */
-    double    gpsData[3];	                            /**< GPS Data(longitude, latitude, height) */
+    float     imuData[16][4];                           /*< IMU Data 1-6 map to IMUDataType ，each type has 4 data*/
+    float     motorData[6];                             /*< Motor Coder Data */
+    double    gpsData[3];                               /*< GPS Data(longitude, latitude, height) */
     int64_t   gpsTime;                                  /*GPS UTC Time*/
-    int64_t   isMovingFastly;                           /**< whether eyes move fastly when grab this data */
+    int64_t   isMovingFastly;                           /*< whether eyes move fastly when grab this data */
 } BE_GeneralData;
 
 typedef  struct 

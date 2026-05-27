@@ -1,7 +1,7 @@
 //PCL header
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
-#include <pcl/visualization/cloud_viewer.h>
+#include <pcl/visualization/pcl_visualizer.h>
 
 
 #include <iostream>
@@ -38,7 +38,7 @@ struct BE_FSMState // Finite state machine
     bionic_eyes::BionicEyesWrapper *device = nullptr;
 	int precision = 1;
 	float distance_min = 200.0f;
-	float distance_max = 5000.0f;
+	float distance_max = 3000.0f;
 };
 
 bool saving = false;
@@ -141,9 +141,8 @@ void printHelpMessage()
 
 
 //键盘事件回调函数
-void keyboardEventOccurred(const pcl::visualization::KeyboardEvent &event, void* viewer_void) {
-    pcl::visualization::PCLVisualizer *viewer = static_cast<pcl::visualization::PCLVisualizer *> (viewer_void);
-
+void keyboardEventOccurred(const pcl::visualization::KeyboardEvent& event, void* cookie)
+{
     // 仅在按键弹起时触发（避免按下和弹起各触发一次）
     if (event.keyUp()) {
         std::string key = event.getKeySym();
@@ -497,13 +496,34 @@ int main(int argc, char *argv[])
 	pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGBA>);
 
 	//create PCL viewer
-	boost::shared_ptr<pcl::visualization::CloudViewer> viewer(new pcl::visualization::CloudViewer("Cloud Viewer"));
+	pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("PCL Visualizer"));
+
+	// 设置背景色为黑色（可选）
+	viewer->setBackgroundColor(0, 0, 0);
+
+	// 添加坐标系
+	viewer->addCoordinateSystem(1.0);
+
+	// 设置初始相机视角
+	viewer->setCameraPosition(
+		0, 0, -4.0,   // 相机位置
+		0.0, 0.0, 0.0,   // 焦点位置
+		0.0, -1.0, 0.0    // 上方向
+	);
 	
+	// 创建 RGB 颜色处理器
+	pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGBA> rgb_handler(cloud);
+	
+	// 添加点云
+	viewer->addPointCloud(cloud, rgb_handler, "cloud");
+
+	// 设置点云渲染属性（可选：点大小）
+	viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "cloud");
+
     // 注册键盘回调
-    viewer->registerKeyboardCallback(keyboardEventOccurred, (void*)viewer.get());
+    viewer->registerKeyboardCallback(&keyboardEventOccurred, (void*)viewer.get());
 	
 	
-	bool first_time = true;
 	std::chrono::time_point<std::chrono::high_resolution_clock> now, last;
 	float fps;
 	int beDataId_last = -1;
@@ -524,7 +544,7 @@ int main(int argc, char *argv[])
 	cv::Mat cv_bgra(h, w, CV_8UC4);
 	
 	//main loop
-	while (!viewer->wasStopped(10))
+	while (!viewer->wasStopped())
 	{
 		//获取深度信息
 		if (be_fsm.device->isBeDataReady())
@@ -591,26 +611,8 @@ int main(int argc, char *argv[])
 			
 			
 			//PCL显示点云
-			viewer->showCloud(cloud);
+			viewer->updatePointCloud(cloud, rgb_handler, "cloud");
 			
-			
-			// 首次初始化：绘制标系、设置相机视角 
-			if (first_time)
-			{
-				// 设置初始视角
-				viewer->runOnVisualizationThreadOnce([&](pcl::visualization::PCLVisualizer &viz) {
-					// 设置相机参数
-					viz.setCameraPosition(
-						0, 0, -4.0,   // 相机位置
-						0.0, 0.0, 0.0,   // 焦点位置
-						0.0, -1.0, 0.0    // 上方向
-					);
-
-					// 设置背景颜色
-					viz.setBackgroundColor(0, 0, 0);
-					});
-				first_time = false;
-			}
 			
 			
 			//绘制相机位姿
@@ -626,32 +628,30 @@ int main(int argc, char *argv[])
 
 			// 如果RT发生变化，更新视锥体
 			if (rt_changed) {
-				viewer->runOnVisualizationThreadOnce([&](pcl::visualization::PCLVisualizer &viz) {
-					// 移除旧的视锥体
-					removeFrustum(viz, "camera_frustum");
+				// 移除旧的视锥体
+				removeFrustum(*viewer, "camera_frustum");
 
-					// 将旋转向量转换为旋转矩阵
-					cv::Mat cv_l_r_vec(3, 1, CV_32FC1, L0Ln_RT.data());
-					cv::Mat cv_l_r(3, 3, CV_32FC1);
-					cv::Rodrigues(cv_l_r_vec, cv_l_r);
-					cv::Mat cv_l_r_inv = cv_l_r.t();// 旋转矩阵的逆等于它的转置
+				// 将旋转向量转换为旋转矩阵
+				cv::Mat cv_l_r_vec(3, 1, CV_32FC1, L0Ln_RT.data());
+				cv::Mat cv_l_r(3, 3, CV_32FC1);
+				cv::Rodrigues(cv_l_r_vec, cv_l_r);
+				cv::Mat cv_l_r_inv = cv_l_r.t();// 旋转矩阵的逆等于它的转置
 
-					// 平移将单位从mm改为m
-					float lnrn_t_m[3] = {
-						L0Ln_RT[3] / 1000.0f,
-						L0Ln_RT[4] / 1000.0f,
-						L0Ln_RT[5] / 1000.0f
-					};
-					cv::Mat cv_l_t(3, 1, CV_32FC1, lnrn_t_m);
-					cv::Mat cv_l_t_inv = -cv_l_r_inv * cv_l_t;// 逆平移 = -R_inv * t_vec
+				// 平移将单位从mm改为m
+				float lnrn_t_m[3] = {
+					L0Ln_RT[3] / 1000.0f,
+					L0Ln_RT[4] / 1000.0f,
+					L0Ln_RT[5] / 1000.0f
+				};
+				cv::Mat cv_l_t(3, 1, CV_32FC1, lnrn_t_m);
+				cv::Mat cv_l_t_inv = -cv_l_r_inv * cv_l_t;// 逆平移 = -R_inv * t_vec
 
-					auto vertices = computeFrustumVertices((float*)cv_l_r_inv.data, (float*)cv_l_t_inv.data, K0_rectified.data(), w, h, be_fsm.distance_min / 1000.0f, be_fsm.distance_max / 1000.0f);
+				auto vertices = computeFrustumVertices((float*)cv_l_r_inv.data, (float*)cv_l_t_inv.data, K0_rectified.data(), w, h, be_fsm.distance_min / 1000.0f, be_fsm.distance_max / 1000.0f);
 
-					// 绘制新的视锥体
-					drawFrustum(viz, vertices, "camera_frustum", 0.0, 0.0, 1.0, 2.0);
+				// 绘制新的视锥体
+				drawFrustum(*viewer, vertices, "camera_frustum", 0.0, 0.0, 1.0, 2.0);
 
-					//std::cout << "FOV frustum updated due to RT change." << std::endl;
-					});
+				//std::cout << "FOV frustum updated due to RT change." << std::endl;
 			}
 
 			// 更新上一帧的RT（只要RT变了就更新）
@@ -661,12 +661,18 @@ int main(int argc, char *argv[])
 				}
 			}
 		}
-	
+        
+		viewer->spinOnce(1);
 	}
 	
 	
 
     std::cout << "uninit" << std::endl;
+	
+	//停止深度信息传输
+	be_fsm.device->setDepthControl(false, using_sv, be_fsm.precision, be_fsm.distance_min, be_fsm.distance_max);
+	msleep(1000);
+	
 	cloud->points.clear();
 	if (be_fsm.device != nullptr)
     {

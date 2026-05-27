@@ -1,4 +1,4 @@
-﻿#ifndef EVO_OPENGL_UTILS
+#ifndef EVO_OPENGL_UTILS
 #define EVO_OPENGL_UTILS
 
 #include "evo_tinycgl_global_define.h"

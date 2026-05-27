@@ -48,6 +48,8 @@ be_sdk_mini/
 		**注意2204使用apt安装的PCL可能有兼容性问题**
 	
 	- Win下去PCL的Release页面下载 https://github.com/PointCloudLibrary/pcl/releases
+	
+		**注意用的VS版本不能低于预编译的PCL的VS版本**
 
 
 ## SDK文件介绍
@@ -104,7 +106,7 @@ be_sdk_mini/
 - GLUT和PCL会自动去找，找不到的话自己手动修改
 
 
-## 注意点
+## 常见问题
 
 1. 临时目录问题
 
@@ -132,3 +134,5 @@ export __GLX_VENDOR_LIBRARY_NAME=nvidia
 - Win的话，设置->系统->屏幕->显示卡->应用程序的自定义设置
 
 然后添加应用，将程序加进去，GPU首选项选成NV独立显卡
+
+3. win下编译完成后，依赖的dll文件需要自己手动复制到编译生成的程序的目录才能运行（如cmake设置了build目录，使用Release方式，那通常目录就是build/Release）

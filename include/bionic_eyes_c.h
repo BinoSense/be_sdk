@@ -608,8 +608,7 @@ BE_API bool BE_CALL BE_getNewestDepthInfo(BE_Handle handle, int *id, uint16_t *Z
 BE_API void BE_CALL BE_freeImage(BE_Image* image);
 BE_API void BE_CALL BE_freeCalibrationInfo(uint8_t* info);
 
-BE_API const char * BE_CALL BE_getDeviceName();  //获取名字
-BE_API const char * BE_CALL BE_getDeviceIP();    //获取IP  
+//BE_API const char * BE_CALL BE_getDeviceName(BE_Handle handle);  //获取名字
 #ifdef __cplusplus
 }
 #endif

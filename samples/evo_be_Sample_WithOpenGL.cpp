@@ -45,7 +45,7 @@ struct BE_FSMState // Finite state machine
     bionic_eyes::BionicEyesWrapper *device = nullptr;
 	int precision = 1;
 	float distance_min = 200.0f;
-	float distance_max = 5000.0f;
+	float distance_max = 3000.0f;
 };
 
 bool fullscreen = true;
@@ -656,6 +656,11 @@ int main(int argc, char *argv[])
 	
 
     std::cout << "uninit" << std::endl;
+	
+	//停止深度信息传输
+	be_fsm.device->setDepthControl(false, using_sv, be_fsm.precision, be_fsm.distance_min, be_fsm.distance_max);
+	msleep(1000);
+	
     if (interop_cloud != nullptr)
     {
         interop_cloud->uninit();

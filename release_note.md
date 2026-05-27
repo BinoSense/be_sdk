@@ -1,3 +1,50 @@
+## v2.1.0 2026-04-30
+
+1. 工程部分
+
+- 增加win的支持
+
+- 修正win下查找PCL库时，若使用RelWithDebInfo会找到debug库的问题
+
+- 示例程序部分完善
+
+	- `evo_be_Sample_WithPCL.cpp`改为使用PCLVisualizer来绘制，尝试回避之前使用CloudViewer可能的兼容性问题
+
+- 文件修改为无BOM的UTF-8，解决跨平台的乱码问题
+
+2. 算法部分
+
+暂无
+
+3. 编译、测试情况
+
+- Jetson
+
+    - 编译 & 测试
+	
+        - 在Orin NX（Jetpack 6.2.1+补丁，L4T 36.4.7）（GCC 11.4.0，libstdc++.so.6最高GLIBCXX_3.4.30）**除了PCL Sample其他都通过**
+		
+- Ubuntu PC
+
+    - 编译
+	
+        - 在2004（GCC 9.4.0，libstdc++.so.6最高GLIBCXX_3.4.28）全部通过
+		
+    - 测试
+	
+        - 在2004（GCC 9.4.0，libstdc++.so.6最高GLIBCXX_3.4.28）全部通过（新环境，仅安装`cmake-gui`、`build-essential`、`libopencv-dev`、`libxmu-dev`、`libxi-dev`、`freeglut3-dev`、`libpcl-dev`）
+		
+        - 在2204（GCC 11.4.0，libstdc++.so.6最高GLIBCXX_3.4.30）**除了PCL Sample其他都通过**（新环境，仅安装`cmake-gui`、`build-essential`、`libopencv-dev`、`libxmu-dev`、`libxi-dev`、`freeglut3-dev`、`libpcl-dev`）**2204使用apt安装的PCL可能有兼容性问题**
+		
+        - 在2404（GCC 13.3.0, libstdc++.so.6最高GLIBCXX_3.4.33）全部通过
+		
+- Win PC
+
+    - 编译 & 测试
+	
+		- 在Win 11（VS2022）全部通过
+
+
 ## v2.0.0 2026-04-07
 
 1. 工程部分
@@ -42,9 +89,9 @@
 		
     - 测试
 	
-        - 在2004（GCC 9.4.0，libstdc++.so.6最高GLIBCXX_3.4.28）全部通过（新环境，仅安装`cmake-gui`、`build-essential`、`libopencv-dev`、`libpcl-dev`）
+        - 在2004（GCC 9.4.0，libstdc++.so.6最高GLIBCXX_3.4.28）全部通过（新环境，仅安装`cmake-gui`、`build-essential`、`libopencv-dev`、`libxmu-dev`、`libxi-dev`、`freeglut3-dev`、`libpcl-dev`）
 		
-        - 在2204（GCC 11.4.0，libstdc++.so.6最高GLIBCXX_3.4.30）**除了PCL Sample其他都通过**（新环境，仅安装`cmake-gui`、`build-essential`、`libopencv-dev`、`libpcl-dev`）**2204使用apt安装的PCL可能有兼容性问题**
+        - 在2204（GCC 11.4.0，libstdc++.so.6最高GLIBCXX_3.4.30）**除了PCL Sample其他都通过**（新环境，仅安装`cmake-gui`、`build-essential`、`libopencv-dev`、`libxmu-dev`、`libxi-dev`、`freeglut3-dev`、`libpcl-dev`）**2204使用apt安装的PCL可能有兼容性问题**
 		
         - 在2404（GCC 13.3.0, libstdc++.so.6最高GLIBCXX_3.4.33）全部通过
 		
