@@ -111,6 +111,7 @@ typedef enum {
         enumMouth_SDF,                  /**< Single Degree of Freedom Mouth*/
         enumLighting,
         enumRobotArm_5DOF,
+		enumSinMotion,
 } BE_ExtraModuleType;
 
 typedef enum {
@@ -189,10 +190,27 @@ typedef struct
     uint64_t  frame_id;
     uint64_t  timestamp;
 
+    //motor value
+    //0: right, 1: left, 2: neck
+    float motorEncoderData[3][3];      /**< Motor Encoder Data */
+    float motorEulerData[3][3];        /**< Motor Euler Data */
+
+    //pose value, will be calculated in the following order: motor encoder value -> motor euler angle -> device(eye/neck) RT vector (0 positon -> new position)
+    //since motor's center of rotation does not equal with the device's CMOS center, motor pose is not equal with device(eye/neck) pose
+    //L: left eye, R: right eye, N: neck
+    //0: 0 position, n: new position
+    float L0LnRTVectorData[6];                  /**< RT vector (left eye 0 positon -> left eye new position) Data */
+    float R0RnRTVectorData[6];                  /**< RT vector (right eye 0 positon -> right eye new position) Data */
+    float N0NnRTVectorData[6];                  /**< RT vector (neck 0 positon -> neck new position) Data */
+    float LnRnRTVectorData[6];                  /**< RT vector (left eye new positon -> right eye new position) Data */
+
+	float exposureTimeMS;
+	float gain;
+	float whiteBalanceTemperature;
+		
     float     imuData[16][4];                           /*< IMU Data 1-6 map to IMUDataType ，each type has 4 data*/
-    float     motorData[6];                             /*< Motor Coder Data */
     double    gpsData[3];                               /*< GPS Data(longitude, latitude, height) */
-    int64_t   gpsTime;                                  /*GPS UTC Time*/
+    int64_t   gpsTime;                                  /*< GPS UTC Time*/
     int64_t   isMovingFastly;                           /*< whether eyes move fastly when grab this data */
 } BE_GeneralData;
 

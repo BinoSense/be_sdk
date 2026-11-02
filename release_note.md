@@ -1,3 +1,60 @@
+## v3.0.0 2026-08-28
+
+1. 工程部分
+
+- 示例程序部分完善
+
+	- 对应数据结构的修改（可获得的数据欧拉角变量名做了修改，增加了眼睛和脖子的RT向量）
+
+2. 算法部分
+
+- 每帧获取的数据增加曝光时间、增益、白平衡信息
+
+- 设备增加新的自动曝光自动增益算法，软件端可控制开关及具体参数（目前P320曝光时间暂时不可调）
+
+- S520修正图像和位姿数据可能差一帧的BUG
+
+3. 编译、测试情况
+
+- Jetson
+
+    - 编译 & 测试
+	
+        - 在Orin NX（Jetpack 6.2.1+补丁，L4T 36.4.7）（GCC 11.4.0，libstdc++.so.6最高GLIBCXX_3.4.30）**除了PCL Sample其他都通过**
+		
+- Ubuntu PC
+
+    - 编译
+	
+        - 在2004（GCC 9.4.0，libstdc++.so.6最高GLIBCXX_3.4.28）全部通过
+		
+    - 测试
+	
+        - 在2004（GCC 9.4.0，libstdc++.so.6最高GLIBCXX_3.4.28）全部通过（新环境，仅安装`cmake-gui`、`build-essential`、`libopencv-dev`、`libxmu-dev`、`libxi-dev`、`freeglut3-dev`、`libpcl-dev`）
+		
+        - 在2204（GCC 11.4.0，libstdc++.so.6最高GLIBCXX_3.4.30）**除了PCL Sample其他都通过**（新环境，仅安装`cmake-gui`、`build-essential`、`libopencv-dev`、`libxmu-dev`、`libxi-dev`、`freeglut3-dev`、`libpcl-dev`）**2204使用apt安装的PCL可能有兼容性问题**
+		
+        - 在2404（GCC 13.3.0, libstdc++.so.6最高GLIBCXX_3.4.33）全部通过
+		
+- Win PC
+
+    - 编译
+	
+		- 在Win 11（VS2022）全部通过
+		
+    - 测试
+	
+		- 在Win 11全部通过
+
+4. 已知问题
+
+- P320
+
+	- 曝光时间目前无法进行设置
+	
+	- 图像数据与位姿信息目前可能有一帧之内的偏差
+	
+
 ## v2.1.0 2026-04-30
 
 1. 工程部分

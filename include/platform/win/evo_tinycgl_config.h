@@ -6,9 +6,9 @@
 #define EVO_TINYCGL_VENDOR_CONTACT "aiguan@ilooktech.com"
 #define EVO_TINYCGL_VENDOR_DOMAIN "http://www.ilooktech.com/"
 
-#define EVO_TINYCGL_VERSION "0.4.0"
+#define EVO_TINYCGL_VERSION "0.5.0"
 #define EVO_TINYCGL_VERSION_MAJOR 0
-#define EVO_TINYCGL_VERSION_MINOR 4
+#define EVO_TINYCGL_VERSION_MINOR 5
 #define EVO_TINYCGL_VERSION_PATCH 0
 
 #define EVO_BIT_64

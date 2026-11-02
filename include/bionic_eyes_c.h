@@ -468,6 +468,21 @@ BE_API void BE_CALL BE_getCameraGainRange(BE_Handle handle, float* up, float* do
  **************************************************/
 BE_API void BE_CALL BE_setCameraGain(BE_Handle handle, int type, bool autoGain, int value);
 
+BE_API float BE_CALL BE_getCameraGain(BE_Handle handle, int type);
+
+BE_API void BE_CALL BE_onOffCameraAutoExposureAutoGain(BE_Handle handle, bool valid);
+
+BE_API void BE_CALL BE_setCameraAutoExposureAutoGainParameters(BE_Handle handle, 
+			int average_luminance_type, //Log全图平均、Log中心重点、全图平均、中心重点
+			float average_luminance_target_min, float average_luminance_target_max, //一次自动曝光开启后，亮度到了此范围认为此次自动曝光成功结束
+			float average_luminance_allowable_min, float average_luminance_allowable_max, //自动曝光一次调整成功结束后，在此范围内不会再次进行曝光时间、gain的调整
+			float exposure_time_ms_min, float exposure_time_ms_max, float exposure_time_ms_step, //允许的曝光时间范围、调整步长
+			float gain_min, float gain_max, float gain_step, //允许的gain范围（默认值为dB*10）、调整步长
+			float exposure_time_adjust_ratio, //曝光时间的调整系数（原值*（1+亮度差值*ratio）为调整步长）
+			float gain_adjust_ratio, float gain_log_ratio, float gain_small_boost, //gain的调整系数（原值*（1+亮度差值*可变ratio）为调整步长。可变ratio由log_ratio算回线性域之后，基础系数ratio叠加小值放大系数small_boost反比例得到）
+			float loop_time_ms_min//线程的单次最短处理时间
+			);
+
 // 数据保存函数
 /**************************************************
  * Start to save all data when calling this function.
@@ -576,6 +591,10 @@ BE_API void BE_CALL BE_setWipers(BE_Handle handle, uint8_t value);
 //      para0: 0xC8 右手臂， 0xC9 左手臂
 //      para1: 0x00 执行动作， 0x01 学习动作
 //      para2: 0x00~0x0F 16个动作， 0x10 解锁关节,  0x11 锁定关节, 0x12 设置为初始位置
+// for sin motion: para0, para1, and para2 work.
+//      para0: id, 0: right, 1: left, 2: neck
+//      para1: 幅度
+//      para2: 周期
 BE_API void BE_CALL BE_setExtraModuleFunction(BE_Handle handle, BE_ExtraModuleType type, int para0, int para1, int para2);
 
 //设置电机运行速度

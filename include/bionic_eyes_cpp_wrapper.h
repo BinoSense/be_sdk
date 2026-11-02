@@ -992,6 +992,39 @@ namespace bionic_eyes {
 			BE_setCameraGain(handle_, type, autoGain, value);
 		}
 
+		float getCameraGain(int type)
+		{
+			return BE_getCameraGain(handle_, type);
+		}
+
+		//新方法，在板子计算控制，保证双目曝光时间、gain、wb值一致。启用此方法会停掉相机自身的AEAG，仅保留左眼的自动白平衡
+		void onOffCameraAutoExposureAutoGain(bool valid)
+		{
+			BE_onOffCameraAutoExposureAutoGain(handle_, valid);
+		}
+		
+		//设置完参数之后，需要调用一次onOffCameraAutoExposureAutoGain才会生效
+		void setCameraAutoExposureAutoGainParameters(int average_luminance_type, //Log全图平均、Log中心重点、全图平均、中心重点
+			float average_luminance_target_min, float average_luminance_target_max, //一次自动曝光开启后，亮度到了此范围认为此次自动曝光成功结束
+			float average_luminance_allowable_min, float average_luminance_allowable_max, //自动曝光一次调整成功结束后，在此范围内不会再次进行曝光时间、gain的调整
+			float exposure_time_ms_min, float exposure_time_ms_max, float exposure_time_ms_step, //允许的曝光时间范围、调整步长
+			float gain_min, float gain_max, float gain_step, //允许的gain范围（默认值为dB*10）、调整步长
+			float exposure_time_adjust_ratio, //曝光时间的调整系数（原值*（1+亮度差值*ratio）为调整步长）
+			float gain_adjust_ratio, float gain_log_ratio, float gain_small_boost, //gain的调整系数（原值*（1+亮度差值*可变ratio）为调整步长。可变ratio由log_ratio算回线性域之后，基础系数ratio叠加小值放大系数small_boost反比例得到）
+			float loop_time_ms_min//线程的单次最短处理时间
+			)
+		{
+			BE_setCameraAutoExposureAutoGainParameters(handle_, 
+			average_luminance_type, 
+			average_luminance_target_min, average_luminance_target_max, 
+			average_luminance_allowable_min, average_luminance_allowable_max, 
+			exposure_time_ms_min, exposure_time_ms_max, exposure_time_ms_step, 
+			gain_min, gain_max, gain_step, 
+			exposure_time_adjust_ratio, 
+			gain_adjust_ratio, gain_log_ratio, gain_small_boost, 
+			loop_time_ms_min);
+		}
+
 		// 数据保存
 		/**************************************************
 		 * Start to save all data when calling this function.
@@ -1151,6 +1184,10 @@ namespace bionic_eyes {
 		//      para0: 0xC8 右手臂， 0xC9 左手臂
 		//      para1: 0x00 执行动作， 0x01 学习动作
 		//      para2: 0x00~0x0F 16个动作， 0x10 解锁关节,  0x11 锁定关节, 0x12 设置为初始位置
+		// for sin motion: para0, para1, and para2 work.
+		//      para0: id, 0: right, 1: left, 2: neck
+		//      para1: 幅度
+		//      para2: 周期
 		void setExtraModuleFunction(BE_ExtraModuleType type, int para0 = 0, int para1 = 0, int para2 = 0)
 		{
 			BE_setExtraModuleFunction(handle_, type, para0, para1, para2);

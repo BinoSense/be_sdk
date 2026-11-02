@@ -78,7 +78,7 @@ be_sdk_mini/
 
 	`evo_be_Sample_WithOpenCV_simple.cpp`
 	
-	仅结合OpenCV，最简单的例子，展示如何使用OpenCV来显示图片、打印编码器值等
+	仅结合OpenCV，最简单的例子，展示如何使用OpenCV来显示图片、打印RT向量值等
 	
 	其中主要展示了如何完成一个最简单的完整的仅获取数据的过程（包括使用`mat_converter.hpp`辅助头文件，将数据转为OpenCV的Mat）
 	
@@ -120,7 +120,9 @@ mkdir /usr/Evo_BionicEyes/tmp_path
 
 - Win的话，在运行之前，需要确保有`C:/Evo_BionicEyes`目录，然后还要有`C:/Evo_BionicEyes/tmp_path`目录
 
-2. OpenGL的sample不使用NV独立显卡而使用集成显卡导致无法正常运行的问题
+2. Win下编译完成后，依赖的dll文件需要自己手动复制到编译生成的程序的目录才能运行（如cmake设置了build目录，使用Release方式，那通常目录就是`build/Release`）
+
+3. OpenGL的sample不使用NV独立显卡而使用集成显卡导致无法正常运行的问题
 
 - Ubuntu的话，在console先执行
 
@@ -135,4 +137,4 @@ export __GLX_VENDOR_LIBRARY_NAME=nvidia
 
 然后添加应用，将程序加进去，GPU首选项选成NV独立显卡
 
-3. win下编译完成后，依赖的dll文件需要自己手动复制到编译生成的程序的目录才能运行（如cmake设置了build目录，使用Release方式，那通常目录就是build/Release）
+4. Win下若运行碰到出现**智能应用控制已阻止此应用的一部分**的警告，程序无法运行时，在系统设置中关闭**智能应用控制**，即可正常运行

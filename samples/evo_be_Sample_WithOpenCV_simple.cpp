@@ -367,12 +367,13 @@ int main(int argc, char *argv[])
 				}
 				
 				
-				//打印编码器值
+				//打印id、时间戳、曝光时间、gain、白平衡、RT向量
 				if (printing)
 				{
+					std::cout << be_fsm.beData.frame_id << " " << be_fsm.beData.timestamp << ": " << be_fsm.beData.exposureTimeMS << "|" << be_fsm.beData.gain << "|" << be_fsm.beData.whiteBalanceTemperature << "\t";
 					for (int i = 0; i < 6; i++)
 					{
-						std::cout << be_fsm.beData.motorData[i] << ", ";
+						std::cout << be_fsm.beData.LnRnRTVectorData[i] << ", ";
 					}
 					std::cout << std::endl;
 				}
